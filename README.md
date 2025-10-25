@@ -1,26 +1,54 @@
-# TeamVirtual Custom Contact Logger
+<?php
+/**
+ * Plugin Name: TeamVirtual Contract Logger
+ * Description: Logs contract form submissions securely into a custom post type.
+ * Version: 1.0
+ * Author: Sakib Hossain
+ * License: GPL2
+ */
 
-A lightweight, secure WordPress plugin to log contact form submissions into a custom post type (`contact_log`). Built with PSR-12 standards, nonce verification, and ACF integration.
+namespace TeamVirtual\ContractLogger;
 
-## Features
-- Custom Post Type: `contact_log`
-- Nonce-based security for form submission
-- Sanitized input fields (name, email, message)
-- ACF integration for structured data storage
-- No global variables, namespaced code
+defined('ABSPATH') || exit;
 
-## Usage
-1. Activate the plugin.
-2. Ensure ACF fields (`field_name`, `field_email`, `field_message`) are set for `contact_log`.
-3. Add a contact form on a page named `contact` with fields: `name`, `email`, `message`.
-4. Plugin auto-inserts nonce and handles submission securely.
+// Register Custom Post Type
+add_action('init', function () {
+    register_post_type('contract_log', [
+        'label' => 'Contract Logs',
+        'public' => false,
+        'show_ui' => true,
+        'supports' => ['title', 'custom-fields'],
+    ]);
+});
 
-## Security
-- Nonce verification
-- Input sanitization
-- No global variables
-- PSR-12 compliant code
+// Enqueue nonce field in form
+add_action('wp_footer', function () {
+    if (is_page('contract')) {
+        wp_nonce_field('tv_contract_nonce_action', 'tv_contract_nonce_field');
+    }
+});
 
-## Author
-Sakib Hossain  
-Founder, WPProDesk | Team Virtual International LTD  
+// Handle form submission
+add_action('init', function () {
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['tv_contract_nonce_field'])) {
+        if (!wp_verify_nonce($_POST['tv_contract_nonce_field'], 'tv_contract_nonce_action')) {
+            wp_die('Security check failed');
+        }
+
+        $client_name = sanitize_text_field($_POST['client_name'] ?? '');
+        $contract_type = sanitize_text_field($_POST['contract_type'] ?? '');
+        $details = sanitize_textarea_field($_POST['details'] ?? '');
+
+        $post_id = wp_insert_post([
+            'post_type' => 'contract_log',
+            'post_title' => $client_name . ' - ' . current_time('mysql'),
+            'post_status' => 'publish',
+        ]);
+
+        if ($post_id && function_exists('update_field')) {
+            update_field('field_client_name', $client_name, $post_id);
+            update_field('field_contract_type', $contract_type, $post_id);
+            update_field('field_details', $details, $post_id);
+        }
+    }
+});
